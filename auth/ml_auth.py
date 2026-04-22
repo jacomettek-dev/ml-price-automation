@@ -7,7 +7,7 @@ import requests
 from dotenv import load_dotenv, set_key
 
 AUTH_URL = "https://auth.mercadolivre.com.br/authorization"
-TOKEN_URL = "https://api.mercadolivre.com/oauth/token"
+TOKEN_URL = "https://api.mercadolibre.com/oauth/token"
 ENV_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
 
 _auth_code: str | None = None

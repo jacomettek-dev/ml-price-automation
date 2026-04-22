@@ -2,7 +2,7 @@ import time
 import random
 import requests
 
-BASE_URL = "https://api.mercadolivre.com"
+BASE_URL = "https://api.mercadolibre.com"
 
 
 class MLClient:
