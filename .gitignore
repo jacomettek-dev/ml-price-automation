@@ -9,3 +9,5 @@ venv/
 dist/
 build/
 .streamlit/secrets.toml
+.secret_key
+.session_cache/

@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ML Price Automation — SofistiCasa</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #1a1a2e; color: #e0e0e0; }
+    .card { background: #16213e; border: 1px solid #0f3460; }
+    .nav-tabs .nav-link { color: #aaa; }
+    .nav-tabs .nav-link.active { background: #0f3460; color: #fff; border-color: #0f3460; }
+    table { font-size: .85rem; }
+    thead th { background: #0f3460; color: #fff; }
+    .approved { color: #2ecc71; font-weight: 600; }
+    .rejected { color: #e74c3c; font-weight: 600; }
+    .log-box { background: #0d0d1a; border-radius: 6px; padding: 10px; font-size: .8rem;
+                max-height: 140px; overflow-y: auto; font-family: monospace; color: #adf; }
+    .spinner-border { width: 1.2rem; height: 1.2rem; }
+  </style>
+</head>
+<body>
+<div class="container py-4">
+  <h4 class="mb-1">🛒 ML Price Automation <small class="text-muted fs-6">— SofistiCasa</small></h4>
+
+  {% if authenticated %}
+  <div class="alert alert-success d-flex justify-content-between align-items-center py-2 mb-3">
+    <span>✅ Conectado — User ID: <strong>{{ user_id }}</strong></span>
+    <form method="post" action="/logout" class="mb-0">
+      <button class="btn btn-sm btn-outline-light">Desconectar</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <ul class="nav nav-tabs mb-3" id="tabs">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-config">⚙ Configuração</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-offers">💲 Ofertas Relâmpago</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-campaigns">📊 Campanhas</button></li>
+  </ul>
+
+  <div class="tab-content">
+
+    <!-- ── CONFIGURAÇÃO ─────────────────────────────────────────── -->
+    <div class="tab-pane fade show active" id="tab-config">
+      <div class="card p-4">
+        <h5 class="mb-3">Configuração do Mercado Livre</h5>
+
+        {% if not authenticated %}
+        <form method="post" action="/auth/start">
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label">Client ID</label>
+              <input name="client_id" class="form-control bg-dark text-light border-secondary" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Client Secret</label>
+              <input name="client_secret" type="password" class="form-control bg-dark text-light border-secondary" required>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">
+              URI de redirecionamento
+              <small class="text-muted">(registre essa URL no ML Developers)</small>
+            </label>
+            <input name="redirect_uri" class="form-control bg-dark text-light border-secondary"
+                   value="{{ redirect_uri }}" required>
+            <div class="form-text text-muted">
+              Local: <code>http://localhost:5000/callback</code> &nbsp;|&nbsp;
+              Cloud: <code>https://seuapp.onrender.com/callback</code>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">🔑 Autorizar no Mercado Livre</button>
+        </form>
+        {% else %}
+        <p class="text-success mb-0">Você está autenticado. Use as abas acima para gerenciar ofertas e campanhas.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ── OFERTAS RELÂMPAGO ─────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-offers">
+      <div class="card p-4">
+        <h5 class="mb-3">Ofertas Relâmpago — Aplicação de Preços</h5>
+
+        {% if not authenticated %}
+        <div class="alert alert-warning">⚠ Autentique na aba Configuração primeiro.</div>
+        {% else %}
+
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <label class="form-label">ID da Promoção</label>
+            <input id="promo-id" class="form-control bg-dark text-light border-secondary" placeholder="ex: MLB123456">
+          </div>
+          <div class="col-md-8">
+            <label class="form-label">Planilha de preços (.xlsx)</label>
+            <input id="price-sheet" type="file" accept=".xlsx" class="form-control bg-dark text-light border-secondary">
+          </div>
+        </div>
+
+        <div class="d-flex gap-2 mb-3">
+          <button class="btn btn-outline-light btn-sm" onclick="refreshCache()">
+            <span id="cache-spin" class="spinner-border d-none"></span> 🔄 Atualizar Cache de SKUs
+          </button>
+          <button class="btn btn-outline-primary btn-sm" onclick="fetchPrices()">
+            <span id="price-spin" class="spinner-border d-none"></span> 🔍 Buscar Preços ML
+          </button>
+          <button id="apply-btn" class="btn btn-success btn-sm d-none" onclick="applyPrices()">
+            <span id="apply-spin" class="spinner-border d-none"></span> ✅ Aplicar Aprovados
+          </button>
+        </div>
+
+        <div id="price-alert" class="d-none"></div>
+        <div id="price-summary" class="d-none alert alert-info py-2"></div>
+        <div id="price-log" class="log-box d-none mb-3"></div>
+        <div id="price-table" class="table-responsive"></div>
+
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ── CAMPANHAS ─────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-campaigns">
+      <div class="card p-4">
+        <h5 class="mb-3">Análise de Viabilidade de Campanhas</h5>
+        <p class="text-muted small">Score = Visibilidade Estimada ÷ Perda Estimada (R$) — maior score = melhor custo-benefício</p>
+
+        {% if not authenticated %}
+        <div class="alert alert-warning">⚠ Autentique na aba Configuração primeiro.</div>
+        {% else %}
+
+        <button class="btn btn-outline-primary btn-sm mb-3" onclick="loadCampaigns()">
+          <span id="camp-spin" class="spinner-border d-none"></span> 📊 Carregar Campanhas
+        </button>
+
+        <div id="camp-alert" class="d-none"></div>
+        <div id="camp-log" class="log-box d-none mb-3"></div>
+        <div id="camp-table" class="table-responsive"></div>
+
+        {% endif %}
+      </div>
+    </div>
+
+  </div><!-- tab-content -->
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function spin(id, on) {
+  document.getElementById(id).classList.toggle('d-none', !on);
+}
+
+function alert_(elId, msg, type='danger') {
+  const el = document.getElementById(elId);
+  el.className = `alert alert-${type}`;
+  el.textContent = msg;
+  el.classList.remove('d-none');
+}
+
+function buildTable(columns, rows) {
+  let html = '<table class="table table-dark table-sm table-bordered"><thead><tr>';
+  columns.forEach(c => html += `<th>${c}</th>`);
+  html += '</tr></thead><tbody>';
+  rows.forEach(row => {
+    html += '<tr>';
+    row.forEach((cell, i) => {
+      const cls = String(cell).includes('Aprovado') ? 'approved' :
+                  String(cell).includes('Rejeitado') ? 'rejected' : '';
+      html += `<td class="${cls}">${cell}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+async function refreshCache() {
+  spin('cache-spin', true);
+  try {
+    const r = await fetch('/api/cache', {method:'POST'});
+    const d = await r.json();
+    if (d.error) alert_(d.error);
+    else alert_('price-alert', d.logs.at(-1) || 'Cache atualizado!', 'success');
+  } finally { spin('cache-spin', false); }
+}
+
+async function fetchPrices() {
+  const promoId = document.getElementById('promo-id').value.trim();
+  const file = document.getElementById('price-sheet').files[0];
+  const alertEl = document.getElementById('price-alert');
+  alertEl.classList.add('d-none');
+
+  if (!promoId || !file) {
+    alert_('price-alert', 'Informe o ID da promoção e selecione a planilha.');
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append('promo_id', promoId);
+  fd.append('price_sheet', file);
+
+  spin('price-spin', true);
+  document.getElementById('apply-btn').classList.add('d-none');
+  document.getElementById('price-table').innerHTML = '';
+  document.getElementById('price-summary').classList.add('d-none');
+
+  try {
+    const r = await fetch('/api/prices', {method:'POST', body:fd});
+    const d = await r.json();
+    if (d.error) { alert_('price-alert', d.error); return; }
+
+    const sumEl = document.getElementById('price-summary');
+    sumEl.textContent = `${d.total} itens | ✅ ${d.approved} aprovados | ❌ ${d.total - d.approved} rejeitados`;
+    sumEl.classList.remove('d-none');
+
+    document.getElementById('price-table').innerHTML = buildTable(d.columns, d.table);
+    document.getElementById('apply-btn').classList.remove('d-none');
+  } finally { spin('price-spin', false); }
+}
+
+async function applyPrices() {
+  spin('apply-spin', true);
+  const logEl = document.getElementById('price-log');
+  logEl.textContent = '';
+  logEl.classList.remove('d-none');
+
+  try {
+    const r = await fetch('/api/apply', {method:'POST'});
+    const d = await r.json();
+    if (d.error) { alert_('price-alert', d.error); return; }
+
+    d.results.forEach(res => {
+      logEl.textContent += res.ok
+        ? `✅ ${res.item_id} → R$ ${res.price.toFixed(2)}\n`
+        : `❌ ${res.item_id}: ${res.error}\n`;
+    });
+    logEl.textContent += 'Concluído.';
+  } finally { spin('apply-spin', false); }
+}
+
+async function loadCampaigns() {
+  spin('camp-spin', true);
+  document.getElementById('camp-alert').classList.add('d-none');
+  document.getElementById('camp-table').innerHTML = '';
+
+  const logEl = document.getElementById('camp-log');
+  logEl.textContent = '';
+  logEl.classList.add('d-none');
+
+  try {
+    const r = await fetch('/api/campaigns');
+    const d = await r.json();
+    if (d.error) { alert_('camp-alert', d.error); return; }
+
+    if (d.logs && d.logs.length) {
+      logEl.textContent = d.logs.join('\n');
+      logEl.classList.remove('d-none');
+    }
+
+    if (!d.table.length) {
+      alert_('camp-alert', 'Nenhuma campanha encontrada.', 'warning');
+      return;
+    }
+    document.getElementById('camp-table').innerHTML = buildTable(d.columns, d.table);
+  } finally { spin('camp-spin', false); }
+}
+</script>
+</body>
+</html>
